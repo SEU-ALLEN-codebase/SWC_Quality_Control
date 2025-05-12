@@ -7,3 +7,6 @@ A tool for batch quality control of swc files
 -  **detecttask.h/.cpp:** Contains the detection thread.
 -  **sort_swc.h/.cpp:** Contains functions that sort swc.
 -  **others:** Contains functions that support the effective execution of quality control.
+
+## Run
+SwcQualityControl --input_swc_dir_path
