@@ -138,7 +138,7 @@ V_NeuronSWC_list NeuronTree__2__V_NeuronSWC_list(NeuronTree * nt)           //co
 
     bool isSuccess = true;
     editableNeuron.seg = cur_seg.decompose(isSuccess); //////////////
-    isSuccess = true;
+//    isSuccess = true;
     //        qDebug("	editableNeuron.seg.size = %d", editableNeuron.seg.size());
     if(!isSuccess){
         editableNeuron.name = "invalid_swc";

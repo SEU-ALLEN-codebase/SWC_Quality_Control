@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 10.0.1, 2024-07-14T22:02:17. -->
+<!-- Written by QtCreator 10.0.1, 2025-03-21T17:45:49. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -390,9 +390,10 @@
     <valuelist type="QVariantList" key="CustomOutputParsers"/>
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">QualityControl</value>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">CMakeProjectManager.CMakeRunConfiguration.QualityControl</value>
-    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">QualityControl</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">SwcQualityControl</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">CMakeProjectManager.CMakeRunConfiguration.SwcQualityControl</value>
+    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">SwcQualityControl</value>
+    <value type="QString" key="RunConfiguration.Arguments">/home/seu/Desktop/BBP_Defined_Swc</value>
     <value type="bool" key="RunConfiguration.UseCppDebugger">false</value>
     <value type="bool" key="RunConfiguration.UseCppDebuggerAuto">true</value>
     <value type="bool" key="RunConfiguration.UseLibrarySearchPath">true</value>

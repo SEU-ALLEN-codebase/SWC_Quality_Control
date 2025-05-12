@@ -69,6 +69,19 @@ void V_NeuronSWC::printInfo()
 	qDebug()<<"*********** finish print info";
 }
 
+void V_NeuronSWC::printInfo(QTextStream& logOut)
+{
+    logOut<<"*********** start print info\n";
+    logOut<<"name=["<<name.c_str()<<"] comment=["<<comment.c_str()<<"] file=["<<file.c_str()<<"] b_linegraph=["<<b_linegraph<<"] b_jointed=["<<b_jointed<<"]\n";
+    logOut<<"to_be_deleted=["<<to_be_deleted<<"]\n";
+    for (V3DLONG i=0;i<row.size();i++)
+    {
+        V_NeuronSWC_unit v = row.at(i);
+        logOut<<"row ["<< i <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6]<<"\n";
+    }
+    logOut<<"*********** finish print info\n";
+}
+
 
 vector <V_NeuronSWC> V_NeuronSWC::decompose(bool& isSuccess)
 {
@@ -504,7 +517,7 @@ vector <V_NeuronSWC> decompose_V_NeuronSWC(V_NeuronSWC & in_swc, bool& isSuccess
 			if (n_left)
 			{
 				qDebug("split_V_NeuronSWC_segs cann't find start point (left %d points)", n_left);
-                if(repeatCount >= 200){
+                if(repeatCount >= 20){
                     isSuccess = false;
                     return out_swc_segs;
                 }
@@ -533,7 +546,7 @@ vector <V_NeuronSWC> decompose_V_NeuronSWC(V_NeuronSWC & in_swc, bool& isSuccess
         int repeatCount2 = 0;
         for (V3DLONG n = 1; inext >= 0; ++n)
 		{
-            if(repeatCount2 >= 20000){
+            if(repeatCount2 >= 80000){
                 isSuccess = false;
                 return out_swc_segs;
             }

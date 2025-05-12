@@ -12,12 +12,13 @@
 #include <iomanip>
 
 QString CollDetection::swcInputDirPath="";
+bool CollDetection::needSort=false;
 
-CollDetection::CollDetection(QString infilepath, QString infilename, QString logpath, QString apopath, QString anopath, QString swcoutputpath, QString tmpswcpath, QString resultpath,
+CollDetection::CollDetection(QString infilepath, QString infilename, QString logpath, QString apopath, QString anopath, QString swcoutputpath, QString somadefinedswcpath, QString tmpswcpath, QString resultpath,
                              QString croppedApomulfurPath, QString croppedApobifurPath, QString croppedApoloopPath, QString croppedApomissingPath,
-                             QString croppedApocrossingPath, QString croppedApooverlapPath, QString croppedApodissoPath, QString croppedSwcmulfurPath,
+                             QString croppedApocrossingPath, QString croppedApooverlapPath, QString croppedApodissoPath, QString croppedApoanglePath, QString croppedSwcmulfurPath,
                              QString croppedSwcbifurPath, QString croppedSwcloopPath, QString croppedSwcmissingPath,
-                             QString croppedSwccrossingPath, QString croppedSwcoverlapPath, QString croppedSwcdissoPath, QObject* parent){
+                             QString croppedSwccrossingPath, QString croppedSwcoverlapPath, QString croppedSwcdissoPath, QString croppedSwcanglePath, QObject* parent){
     accessManager=new QNetworkAccessManager(this);
     SuperUserHostAddress="http://114.117.165.134:26020/SuperUser";
     BrainTellHostAddress="http://114.117.165.134:26000/release";
@@ -29,6 +30,7 @@ CollDetection::CollDetection(QString infilepath, QString infilename, QString log
     apoPath=apopath;
     anoPath=anopath;
     swcOutputPath=swcoutputpath;
+    somaDefinedSwcPath = somadefinedswcpath;
 
     croppedApoMulfurPath = croppedApomulfurPath;
     croppedApoBifurPath = croppedApobifurPath;
@@ -37,6 +39,7 @@ CollDetection::CollDetection(QString infilepath, QString infilename, QString log
     croppedApoCrossingPath = croppedApocrossingPath;
     croppedApoOverlapPath = croppedApooverlapPath;
     croppedApoDissoPath = croppedApodissoPath;
+    croppedApoAnglePath = croppedApoanglePath;
     croppedSwcMulfurPath = croppedSwcmulfurPath;
     croppedSwcBifurPath = croppedSwcbifurPath;
     croppedSwcLoopPath = croppedSwcloopPath;
@@ -44,6 +47,7 @@ CollDetection::CollDetection(QString infilepath, QString infilename, QString log
     croppedSwcCrossingPath = croppedSwccrossingPath;
     croppedSwcOverlapPath = croppedSwcoverlapPath;
     croppedSwcDissoPath = croppedSwcdissoPath;
+    croppedSwcAnglePath = croppedSwcanglePath;
 
     tmpInFile = tmpswcpath;
     resultPath=resultpath;
@@ -118,11 +122,13 @@ void CollDetection::detectAll(){
     logOut << "------------------------------------\n";
     logOut << "Start Detection Time: ";
     // 获取当前时间
-    QDateTime currentTime = QDateTime::currentDateTime();
-    qint64 currentTimeStamp = currentTime.toSecsSinceEpoch();
+    QDateTime startTime = QDateTime::currentDateTime();
+    qint64 startTimeStamp = startTime.toMSecsSinceEpoch();
     // 将时间格式化为字符串
-    QString formattedTime = currentTime.toString("yyyy-MM-dd HH:mm:ss");
-    logOut << formattedTime << "\n";
+    QString startFormattedTime = startTime.toString("yyyy-MM-dd HH:mm:ss");
+    qint64 preTimeStamp;
+    qint64 postTimeStamp;
+    logOut << startFormattedTime << "\n";
     logOut << "------------------------------------\n";
 
     logOut << "begin detectAll...\n";
@@ -139,6 +145,7 @@ void CollDetection::detectAll(){
         logOut << "------------------------------------\n";
         return;
     }
+
     //尝试从swc中获取soma坐标
     QStringList swcNodeList = getSWCSpecNInfo(inFile, -1);
     if(swcNodeList.size() != 1){
@@ -163,42 +170,84 @@ void CollDetection::detectAll(){
     getImageRES();
 //    removeErrorSegs(segments);
     tuneErrorSegs(segments);
+//    removeShortSegs(segments, 4.2);
 
     writeESWC_file(swcOutputPath, V_NeuronSWC_list__2__NeuronTree(segments));
 
     auto nt=readSWC_file(swcOutputPath);
     segments=NeuronTree__2__V_NeuronSWC_list(nt);
 
-    detectOthers();
-    detectOverlapSegs(segments);
+    if(!isSomaExists){
+        setSomaCondition();
+    }
 
-    colorMutationMarkers = analyzeColorMutationForHB(logOut, isSomaExists, somaCoordinate, segments, 8);
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    detectOthers();
+    detectLoops();
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    othersConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
+
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    detectOverlapSegs(segments);
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    overlapConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
+
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    colorMutationMarkers = analyzeColorMutation(logOut, isSomaExists, somaCoordinate, segments, 8);
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    colorConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
     addMarkers(colorMutationMarkers);
+
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
     dissociativeSegsMarkers = analyzeDissociativeSegs(logOut, segments, somaCoordinate);
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    dissociativeConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
     addMarkers(dissociativeSegsMarkers);
+
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
     anglesMarkers = analyzeAngles(logOut, somaCoordinate, segments, 8, isSomaExists);
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    angleConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
     addMarkers(anglesMarkers);
 
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
     bool isSuccess = sortSWCAndDetectLoop(swcOutputPath, tmpInFile);
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    loopConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
     if(!isSuccess){
         sortSWC(swcOutputPath,tmpInFile,0);
     }
     setSWCRadius(tmpInFile,1);
 
+//    // 获取当前时间
+//    QDateTime currentTime3 = QDateTime::currentDateTime();
+//    // 将时间格式化为字符串
+//    QString formattedTime3 = currentTime3.toString("yyyy-MM-dd HH:mm:ss");
+
+//    logOut << formattedTime3 << "\n";
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
     detectTips();
-//    detectCrossings();
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    tipConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
+
+    preTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    detectCrossings();
+    postTimeStamp = QDateTime::currentDateTime().toMSecsSinceEpoch();
+    crossingConsumedTime = (postTimeStamp - preTimeStamp) / 1000.0;
 
     QFile::remove(tmpInFile);
     logOut << "detectAll end\n";
     logOut << "------------------------------------\n";
     logOut << "End Detection Time: ";
     // 获取当前时间
-    QDateTime currentTime2 = QDateTime::currentDateTime();
-    qint64 currentTimeStamp2 = currentTime2.toSecsSinceEpoch();
+    QDateTime endTime = QDateTime::currentDateTime();
+    qint64 endTimeStamp = endTime.toMSecsSinceEpoch();
     // 将时间格式化为字符串
-    QString formattedTime2 = currentTime2.toString("yyyy-MM-dd HH:mm:ss");
-    logOut << formattedTime2 << "\n";
-    logOut << "Consumed Time: " << currentTimeStamp2 - currentTimeStamp << "s\n";
+    QString endFormattedTime = endTime.toString("yyyy-MM-dd HH:mm:ss");
+    consumedTime = (endTimeStamp - startTimeStamp) / 1000.0;
+
+    logOut << endFormattedTime << "\n";
+    logOut << "Consumed Time: " << QString::number(consumedTime, 'f', 3) << "s\n";
     logOut << "------------------------------------\n";
 }
 
@@ -209,6 +258,12 @@ void CollDetection::generateResult(){
     }
 
     logOut << "begin generateResult...\n";
+
+    int topologyErrorCount = mulFurcationMarkers.size() + (loopMarkers.size()+1)/2
+        + overlapSegsMarkers.size()/2 + dissociativeSegsMarkers.size();
+    int allErrorCount = mulFurcationMarkers.size() + nearBifurcationMarkers.size()/2 + (loopMarkers.size()+1)/2
+                             + overlapSegsMarkers.size()/2 + dissociativeSegsMarkers.size() + anglesMarkers.size()
+        + tipUndoneMarkers.size() + crossingMarkers.size() + colorMutationMarkers.size();
 
     std::ofstream resultOut(resultPath.toStdString());
 
@@ -271,7 +326,9 @@ void CollDetection::generateResult(){
 
     QString csvPath = resultPath.left(resultPath.size() - 4) + ".csv";
     std::ofstream resultCSVOut(csvPath.toStdString());
-    resultCSVOut << "文件目录," << "胞体位置检测情况," << "多分叉(棕色)," << "邻近二分叉(黄色)," << "环(白色)," << "角度异常(绿色)," << "末端缺失(粉色)," << "交叉错误(淡紫色)," << "重叠线段(蓝色)," << "漂浮分支(红色)," << "颜色突变(橙色)," << "异常分支(无)" << endl;
+//    resultCSVOut << "文件目录," << "胞体位置检测情况," << "多分叉(棕色)," << "邻近二分叉(黄色)," << "环(白色)," << "角度异常(绿色)," << "末端缺失(粉色)," << "交叉错误(淡紫色)," << "重叠分支(蓝色)," << "漂浮分支(红色)," << "颜色突变(橙色)," << "异常分支(无)," << "小毛刺(无)," << "明显拓扑错误数量," << "总数量," << "检测耗时(秒)" << endl;
+    resultCSVOut << "文件目录," << "胞体位置检测情况," << "多分叉(棕色)," << "邻近二分叉(黄色)," << "环(白色)," << "角度异常(绿色)," << "末端缺失(粉色)," << "交叉错误(淡紫色)," << "重叠分支(蓝色)," << "漂浮分支(红色)," << "颜色突变(橙色)," << "异常分支(无)," << "小毛刺(无)," << "明显拓扑错误数量," << "总数量," << "检测耗时(秒),"
+                 << "多分叉、邻近二分叉、环检测耗时," << "角度异常检测耗时," << "末端缺失检测耗时," << "交叉错误检测耗时," << "重叠分支检测耗时," << "漂浮分支检测耗时," << "颜色突变检测耗时" << endl;
     //获取相对路径
     QDir swcInputDir(swcInputDirPath);
     QString relativePath = swcInputDir.relativeFilePath(inFile);
@@ -299,7 +356,22 @@ void CollDetection::generateResult(){
     resultCSVOut << overlapSegsMarkers.size()/2<< "对,";
     resultCSVOut << dissociativeSegsMarkers.size() << ",";
     resultCSVOut << colorMutationMarkers.size() << ",";
-    resultCSVOut << errorSegsNum << endl;
+    resultCSVOut << errorSegsNum << ",";
+    resultCSVOut << removedShortSegNum << ",";
+    resultCSVOut << topologyErrorCount << ",";
+    resultCSVOut << allErrorCount << ",";
+//    resultCSVOut << std::fixed << std::setprecision(3) << consumedTime << endl;
+    resultCSVOut << std::fixed << std::setprecision(3) << consumedTime << ",";
+
+//    //补充
+    resultCSVOut << std::fixed << std::setprecision(3) << othersConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << angleConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << tipConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << crossingConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << overlapConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << dissociativeConsumedTime << ",";
+    resultCSVOut << std::fixed << std::setprecision(3) << colorConsumedTime << endl;
+
     resultCSVOut.close();
 
     writeAPO_file(apoPath, markers);
@@ -307,14 +379,20 @@ void CollDetection::generateResult(){
     QFile* anoFile = new QFile(anoPath);
     anoFile->open(QIODevice::WriteOnly | QIODevice::Text);
     QTextStream anoOut(anoFile);
-    anoOut << "APOFILE=" << inFilename << ".apo\n";
+    anoOut << "APOFILE=" << inFilename << ".ano.apo\n";
     if(inFile.endsWith(".swc"))
-        anoOut << "SWCFILE=" << inFilename << ".swc\n";
+        anoOut << "SWCFILE=" << inFilename << ".ano.eswc\n";
     if(inFile.endsWith(".eswc"))
-        anoOut << "SWCFILE=" << inFilename << ".eswc\n";
+        anoOut << "SWCFILE=" << inFilename << ".ano.eswc\n";
     anoFile->flush();
     anoFile->close();
     delete anoFile;
+
+    if(needSort){
+        if(isSomaExists && allErrorCount == 0){
+            generateSortedSwc(somaDefinedSwcPath);
+        }
+    }
 
     logOut << "generateResult end\n";
     logOut << "\n\n";
@@ -413,92 +491,93 @@ void CollDetection::convertCoordInCropedSwc(QString filePath, XYZ coor1){
 void CollDetection::getApoAndCroppedSwc(){
     setSWCRadius(swcOutputPath, 1);
 
-    getApoForCrop(croppedApoMulfurPath, mulFurcationMarkers);
-    getApoForCrop(croppedApoBifurPath, nearBifurcationMarkers);
-    getApoForCrop(croppedApoLoopPath, loopMarkers);
-    getApoForCrop(croppedApoMissingPath, tipAllMarkers);
+//    getApoForCrop(croppedApoMulfurPath, mulFurcationMarkers);
+//    getApoForCrop(croppedApoBifurPath, nearBifurcationMarkers);
+//    getApoForCrop(croppedApoLoopPath, loopMarkers);
+//    getApoForCrop(croppedApoMissingPath, tipAllMarkers);
     getApoForCrop(croppedApoCrossingPath, crossingAllMarkers);
-    getApoForCrop(croppedApoOverlapPath, overlapSegsMarkers);
-    getApoForCrop(croppedApoDissoPath, dissociativeSegsMarkers);
+//    getApoForCrop(croppedApoOverlapPath, overlapSegsMarkers);
+//    getApoForCrop(croppedApoDissoPath, dissociativeSegsMarkers);
+//    getApoForCrop(croppedApoAnglePath, anglesMarkers);
 
-    int size = 32;
-    int z_size = 10;
+    int size = 16;
+    int z_size = 16;
 
-    for(auto s=mulFurcationMarkers.begin(); s!=mulFurcationMarkers.end(); s++){
-        int x=int(s->x);
-        int y=int(s->y);
-        int z=int(s->z);
-       // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
-       // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+//    for(auto s=mulFurcationMarkers.begin(); s!=mulFurcationMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//       // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//       // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
 
-        XYZ coor1=XYZ(x-size, y-size, z-z_size);
-        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
 
-        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcMulfurPath + "/" + coorName;
-        QDir dir;
-        if(!dir.exists(cropSwcDirPath))
-            dir.mkpath(cropSwcDirPath);
-        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
-        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
-    }
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcMulfurPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
 
-    for(auto s=nearBifurcationMarkers.begin(); s!=nearBifurcationMarkers.end(); s++){
-        int x=int(s->x);
-        int y=int(s->y);
-        int z=int(s->z);
-        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
-        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+//    for(auto s=nearBifurcationMarkers.begin(); s!=nearBifurcationMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
 
-        XYZ coor1=XYZ(x-size, y-size, z-z_size);
-        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
 
-        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcBifurPath + "/" + coorName;
-        QDir dir;
-        if(!dir.exists(cropSwcDirPath))
-            dir.mkpath(cropSwcDirPath);
-        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
-        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
-    }
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcBifurPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
 
-    for(auto s=loopMarkers.begin(); s!=loopMarkers.end(); s++){
-        int x=int(s->x);
-        int y=int(s->y);
-        int z=int(s->z);
-        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
-        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+//    for(auto s=loopMarkers.begin(); s!=loopMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
 
-        XYZ coor1=XYZ(x-size, y-size, z-z_size);
-        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
 
-        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcLoopPath + "/" + coorName;
-        QDir dir;
-        if(!dir.exists(cropSwcDirPath))
-            dir.mkpath(cropSwcDirPath);
-        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
-        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
-    }
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcLoopPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
 
-    for(auto s=tipAllMarkers.begin(); s!=tipAllMarkers.end(); s++){
-        int x=int(s->x);
-        int y=int(s->y);
-        int z=int(s->z);
-        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
-        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+//    for(auto s=tipAllMarkers.begin(); s!=tipAllMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
 
-        XYZ coor1=XYZ(x-size, y-size, z-z_size);
-        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
 
-        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcMissingPath + "/" + coorName;
-        QDir dir;
-        if(!dir.exists(cropSwcDirPath))
-            dir.mkpath(cropSwcDirPath);
-        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
-        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
-    }
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcMissingPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
 
     for(auto s=crossingAllMarkers.begin(); s!=crossingAllMarkers.end(); s++){
         int x=int(s->x);
@@ -519,7 +598,45 @@ void CollDetection::getApoAndCroppedSwc(){
         convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
     }
 
-    for(auto s=overlapSegsMarkers.begin(); s!=overlapSegsMarkers.end(); s++){
+//    for(auto s=overlapSegsMarkers.begin(); s!=overlapSegsMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcOverlapPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
+
+//    for(auto s=dissociativeSegsMarkers.begin(); s!=dissociativeSegsMarkers.end(); s++){
+//        int x=int(s->x);
+//        int y=int(s->y);
+//        int z=int(s->z);
+//        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
+//        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
+
+//        XYZ coor1=XYZ(x-size, y-size, z-z_size);
+//        XYZ coor2=XYZ(x+size, y+size, z+z_size);
+
+//        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
+//        QString cropSwcDirPath = croppedSwcDissoPath + "/" + coorName;
+//        QDir dir;
+//        if(!dir.exists(cropSwcDirPath))
+//            dir.mkpath(cropSwcDirPath);
+//        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
+//        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
+//    }
+//}
+    for(auto s=anglesMarkers.begin(); s!=anglesMarkers.end(); s++){
         int x=int(s->x);
         int y=int(s->y);
         int z=int(s->z);
@@ -530,26 +647,8 @@ void CollDetection::getApoAndCroppedSwc(){
         XYZ coor2=XYZ(x+size, y+size, z+z_size);
 
         QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcOverlapPath + "/" + coorName;
-        QDir dir;
-        if(!dir.exists(cropSwcDirPath))
-            dir.mkpath(cropSwcDirPath);
-        getCropedSwc(swcOutputPath, cropSwcDirPath+"/optical.eswc", coor1, coor2);
-        convertCoordInCropedSwc(cropSwcDirPath+"/optical.eswc", coor1);
-    }
-
-    for(auto s=dissociativeSegsMarkers.begin(); s!=dissociativeSegsMarkers.end(); s++){
-        int x=int(s->x);
-        int y=int(s->y);
-        int z=int(s->z);
-        // XYZ coor1=XYZ(max(x-size, 0), max(y-size, 0), max(z-size, 0));
-        // XYZ coor2=XYZ(min(x+size, int(maxRes.x - 1)), min(y+size, int(maxRes.y - 1)), min(z+size, int(maxRes.z - 1)));
-
-        XYZ coor1=XYZ(x-size, y-size, z-z_size);
-        XYZ coor2=XYZ(x+size, y+size, z+z_size);
-
-        QString coorName=QString::number(x)+"_"+QString::number(y)+"_"+QString::number(z);
-        QString cropSwcDirPath = croppedSwcDissoPath + "/" + coorName;
+        QString cropSwcDirPath = croppedSwcAnglePath + "/" + coorName;
+//        qDebug()<<"cropSwcDirPath: "<<cropSwcDirPath;
         QDir dir;
         if(!dir.exists(cropSwcDirPath))
             dir.mkpath(cropSwcDirPath);
@@ -561,12 +660,12 @@ void CollDetection::getApoAndCroppedSwc(){
 void CollDetection::detectTips(){
     logOut << "begin detectTips...\n";
     map<string, set<size_t>> allPoint2SegIdMap = getWholeGrid2SegIDMap(segments);
-    tipPoints=tipDetection(segments, true, allPoint2SegIdMap, 30);
+    tipPoints=tipDetection(segments, false, allPoint2SegIdMap, 15);
 
-    allPoint2SegIdMap = getWholeGrid2SegIDMap(segments);
-    tipPoints=tipDetection(segments, false, allPoint2SegIdMap, 30);
+//    allPoint2SegIdMap = getWholeGrid2SegIDMap(segments);
+//    tipPoints=tipDetection(segments, false, allPoint2SegIdMap, 30);
 
-    writeESWC_file(tmpInFile, V_NeuronSWC_list__2__NeuronTree(segments));
+//    writeESWC_file(tmpInFile, V_NeuronSWC_list__2__NeuronTree(segments));
     handleTip(tipPoints);
     logOut << "detectTips end\n";
     qDebug() << "detectTips end\n";
@@ -714,15 +813,9 @@ vector<NeuronSWC> CollDetection::specStructsDetection(V_NeuronSWC_list& inputSeg
         }
     }
 
-    int maxFurcationsNum = 0;
-    int maxFurcationIndex = -1;
     for(size_t i=0; i<points.size(); ++i){
 //        qDebug()<<i<<" link size: "<<linksIndex[i].size();
         if(linksIndex[i].size() > 3){
-            if(maxFurcationsNum < linksIndex[i].size()){
-                maxFurcationsNum = linksIndex[i].size();
-                maxFurcationIndex = i;
-            }
             logOut << i << " link size: " << linksIndex[i].size() << "\n";
             NeuronSWC s;
             stringToXYZ(points[i],s.x,s.y,s.z);
@@ -736,20 +829,20 @@ vector<NeuronSWC> CollDetection::specStructsDetection(V_NeuronSWC_list& inputSeg
         }
     }
 
-    if(!isSomaExists && maxFurcationsNum >= 5){
-        NeuronSWC s;
-        stringToXYZ(points[maxFurcationIndex],s.x,s.y,s.z);
-        isSomaExists = true;
-        somaCoordinate.x = s.x;
-        somaCoordinate.y = s.y;
-        somaCoordinate.z = s.z;
-        for(auto it = outputSpecialPoints.begin(); it != outputSpecialPoints.end(); it++){
-            if(fabs(s.x - it->x) < 1e-5 && fabs(s.y - it->y) < 1e-5 && fabs(s.z - it->z) < 1e-5){
-                outputSpecialPoints.erase(it);
-                break;
-            }
-        }
-    }
+//    if(!isSomaExists && maxFurcationsNum >= 5){
+//        NeuronSWC s;
+//        stringToXYZ(points[maxFurcationIndex],s.x,s.y,s.z);
+//        isSomaExists = true;
+//        somaCoordinate.x = s.x;
+//        somaCoordinate.y = s.y;
+//        somaCoordinate.z = s.z;
+//        for(auto it = outputSpecialPoints.begin(); it != outputSpecialPoints.end(); it++){
+//            if(fabs(s.x - it->x) < 1e-5 && fabs(s.y - it->y) < 1e-5 && fabs(s.z - it->z) < 1e-5){
+//                outputSpecialPoints.erase(it);
+//                break;
+//            }
+//        }
+//    }
 
     vector<vector<size_t>> pairs;
     set<size_t> pset;
@@ -999,6 +1092,33 @@ vector<NeuronSWC> CollDetection::loopDetection(V_NeuronSWC_list& inputSegList){
         }
     }
 
+    //检测线段相交导致的环
+    for(auto it = wholeGrid2segIDmap.begin(); it != wholeGrid2segIDmap.end(); it++){
+        if(it->second.size() == 2){
+            bool isLoopExists = true;
+            string coor = it->first;
+            for(auto segIt = it->second.begin(); segIt != it->second.end(); segIt++){
+                V_NeuronSWC seg = inputSegList.seg[*segIt];
+                float xLabel1 = seg.row[0].x;
+                float yLabel1 = seg.row[0].y;
+                float zLabel1 = seg.row[0].z;
+                float xLabel2=seg.row[seg.row.size()-1].x;
+                float yLabel2=seg.row[seg.row.size()-1].y;
+                float zLabel2=seg.row[seg.row.size()-1].z;
+                QString gridKeyQ1 = QString::number(xLabel1) + "_" + QString::number(yLabel1) + "_" + QString::number(zLabel1);
+                string gridKey1 = gridKeyQ1.toStdString();
+                QString gridKeyQ2 = QString::number(xLabel2) + "_" + QString::number(yLabel2) + "_" + QString::number(zLabel2);
+                string gridKey2 = gridKeyQ2.toStdString();
+                if(coor == gridKey1 || coor == gridKey2){
+                    isLoopExists = false;
+                }
+            }
+            if(isLoopExists){
+                specPoints.insert(coor);
+            }
+        }
+    }
+
     for(auto it=specPoints.begin(); it!=specPoints.end(); it++){
         NeuronSWC s;
         stringToXYZ(*it,s.x,s.y,s.z);
@@ -1154,46 +1274,53 @@ vector<NeuronSWC> CollDetection::tipDetection(V_NeuronSWC_list& inputSegList, bo
             isReverse=true;
         }
         bool flag=true;
+
         while(true){
-            int size=seg.row.size();
+            int size = seg.row.size();
             vector<int> indexs(size);
-            for(int m=0;m<size;m++)
-                indexs[m]=m;
+            for(int m = 0; m < size;  m++)
+                indexs[m] = m;
             if(isReverse)
-                reverse(indexs.begin(),indexs.end());
-            for(int i=0;i<size;i++){
-                int index=indexs[i];
-                float xLabel = seg.row[index].x;
-                float yLabel = seg.row[index].y;
-                float zLabel = seg.row[index].z;
+                reverse(indexs.begin(), indexs.end());
+            for(int i = 0; i< size; i++){
+                int curIndex = indexs[i];
+                int nextIndex;
+                if (i != size - 1){
+                    int nextIndex = indexs[i + 1];
+                }
+
+                float xLabel = seg.row[curIndex].x;
+                float yLabel = seg.row[curIndex].y;
+                float zLabel = seg.row[curIndex].z;
                 QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
                 string gridKey = gridKeyQ.toStdString();
-                vector<string>::iterator it2=find(points.begin(),points.end(),gridKey);
-                if(it2!=points.end()){
-                    int index2=it2-points.begin();
-                    if(linksIndex[index2].size()>=3){
+                vector<string>::iterator it2 = find(points.begin(), points.end(), gridKey);
+                // 当前点是线的末端点
+                if(it2 != points.end()){
+                    int index2 = it2 - points.begin();
+                    if(linksIndex[index2].size() >= 3){
                         flag=false;
                         break;
                     }
                     else{
-                        if(index==seg.row.size()-1)
+                        if(i == size - 1)
                             break;
-                        tipBranchLength+=distance(xLabel,seg.row[index+1].x,
-                                                    yLabel,seg.row[index+1].y,
-                                                    zLabel,seg.row[index+1].z);
-                        if(tipBranchLength>=dist_thresh)
+                        tipBranchLength += distance(xLabel, seg.row[nextIndex].x,
+                                                    yLabel, seg.row[nextIndex].y,
+                                                    zLabel, seg.row[nextIndex].z);
+                        if(tipBranchLength >= dist_thresh)
                             break;
                         continue;
                     }
                 }
-                tipBranchLength+=distance(xLabel,seg.row[index+1].x,
-                                            yLabel,seg.row[index+1].y,
-                                            zLabel,seg.row[index+1].z);
-                if(tipBranchLength>=dist_thresh)
+                tipBranchLength += distance(xLabel, seg.row[nextIndex].x,
+                                            yLabel, seg.row[nextIndex].y,
+                                            zLabel, seg.row[nextIndex].z);
+                if(tipBranchLength >= dist_thresh)
                     break;
             }
 
-            if(tipBranchLength>=dist_thresh||!flag)
+            if(tipBranchLength >= dist_thresh || !flag)
                 break;
             float xLabel = seg.row[indexs[size-1]].x;
             float yLabel = seg.row[indexs[size-1]].y;
@@ -1202,10 +1329,10 @@ vector<NeuronSWC> CollDetection::tipDetection(V_NeuronSWC_list& inputSegList, bo
             string gridKey = gridKeyQ.toStdString();
             if(wholeGrid2segIDmap[gridKey].size()!=2)
             {
-                tipBranchLength=0;
+                tipBranchLength = 0;
                 break;
             }
-            for(auto segIt=wholeGrid2segIDmap[gridKey].begin(); segIt!=wholeGrid2segIDmap[gridKey].end(); segIt++){
+            for(auto segIt = wholeGrid2segIDmap[gridKey].begin(); segIt != wholeGrid2segIDmap[gridKey].end(); segIt++){
                 if(segId != *segIt)
                 {
                     segId = *segIt;
@@ -1213,11 +1340,11 @@ vector<NeuronSWC> CollDetection::tipDetection(V_NeuronSWC_list& inputSegList, bo
                 }
             }
 
-            if(find(visitedSegIds.begin(),visitedSegIds.end(),segId)==visitedSegIds.end())
+            if(find(visitedSegIds.begin(),visitedSegIds.end(),segId) == visitedSegIds.end())
                 visitedSegIds.push_back(segId);
             else
             {
-                tipBranchLength=0;
+                tipBranchLength = 0;
                 break;
             }
             seg = inputSegList.seg[segId];
@@ -1226,17 +1353,16 @@ vector<NeuronSWC> CollDetection::tipDetection(V_NeuronSWC_list& inputSegList, bo
             float zLabel2 = seg.row[0].z;
             QString gridKeyQ2 = QString::number(xLabel2) + "_" + QString::number(yLabel2) + "_" + QString::number(zLabel2);
             string gridKey2 = gridKeyQ2.toStdString();
-            if(gridKey2!=gridKey)
-                isReverse=true;
+            if(gridKey2 != gridKey)
+                isReverse = true;
             else
-                isReverse=false;
+                isReverse = false;
         }
-
-        if(tipBranchLength>=dist_thresh){
+        if(tipBranchLength >= dist_thresh){
             NeuronSWC s;
             stringToXYZ(*it,s.x,s.y,s.z);
             s.type = 10;
-            if(s.x>33&&s.x+33<maxRes.x&&s.y>33&&s.y+33<maxRes.y&&s.z>33&&s.z+33<maxRes.z)
+            if(s.x > 33 && s.x + 33 <maxRes.x && s.y > 33 && s.y + 33 < maxRes.y && s.z > 33 && s.z + 33 < maxRes.z)
             {
                 QString qKey = QString::number(s.x) + "_" + QString::number(s.y) + "_" + QString::number(s.z);
                 string key = qKey.toStdString();
@@ -1468,7 +1594,7 @@ void CollDetection::handleMulFurcation(vector<NeuronSWC>& outputSpecialPoints, d
 //        else{
         CellAPO marker;
         marker.name="";
-        marker.comment="quality_control";
+        marker.comment="Multifurcation";
         marker.orderinfo="";
         marker.color.r=188;
         marker.color.g=94;
@@ -1490,7 +1616,7 @@ void CollDetection::handleLoop(vector<NeuronSWC>& outputSpecialPoints){
     for(int i=0;i<outputSpecialPoints.size();i++){
         CellAPO marker;
         marker.name="";
-        marker.comment="quality_control";
+        marker.comment="Loop";
         marker.orderinfo="";
         marker.color.r=255;
         marker.color.g=255;
@@ -1511,7 +1637,7 @@ void CollDetection::handleNearBifurcation(vector<NeuronSWC>& bifurPoints){
     for(int i=0;i<bifurPoints.size();i++){
         CellAPO marker;
         marker.name="";
-        marker.comment="quality_control";
+        marker.comment="Approaching bifurcation";
         marker.orderinfo="";
         marker.color.r=220;
         marker.color.g=200;
@@ -1609,6 +1735,8 @@ void CollDetection::handleTip(vector<NeuronSWC>& tipPoints){
         logOut<<"handleTip "<<code<<"\n";
         QByteArray responseData = reply->readAll();
         vector<NeuronSWC> markPoints;
+        vector<TipCoorPredictedResult> coorResults;
+        QString relPath;
         if(code==200)
         {
             //解析json
@@ -1623,57 +1751,46 @@ void CollDetection::handleTip(vector<NeuronSWC>& tipPoints){
                         QJsonValue value = obj.value("code");
                         if (value.isString()) {
                             objCode= value.toString();
-                            logOut << "code : " << objCode<<"\n";
+                            qDebug() << "code : " << objCode;
                         }
                     }
                     if (obj.contains("msg")) {
                         QJsonValue value = obj.value("msg");
                         if (value.isString()) {
                             QString objMsg = value.toString();
-                            logOut << "msg : " << objMsg<<"\n";
+                            qDebug() << "msg : " << objMsg;
                         }
                     }
                     if (obj.contains("data")&&objCode=="200") {
                         QJsonValue value = obj.value("data");
-                        if (value.isArray()) {  // Version 的 value 是数组
-                            QJsonArray array = value.toArray();
-                            int nSize = array.size();
-                            for (int i = 0; i < nSize; ++i) {
-                                QJsonValue mapValue = array.at(i);
-                                if (mapValue.isObject()) {
-                                    QJsonObject info = mapValue.toObject();
-                                    float x,y,z;
-                                    int y_pred;
-                                    if (info.contains("coors")) {
-                                        QJsonValue listValue = info.value("coors");
-                                        if (listValue.isArray()) {
-                                            QJsonArray listArray = listValue.toArray();
-                                            QJsonValue xValue = listArray.at(0);
-                                            QJsonValue yValue = listArray.at(1);
-                                            QJsonValue zValue = listArray.at(2);
-                                            x=xValue.toDouble();
-                                            y=yValue.toDouble();
-                                            z=zValue.toDouble();
-                                            logOut << "x: " << x/2 << " y: " << y/2 << " z: " << z/2 <<" ";
-                                        }
-                                    }
-                                    if (info.contains("y_pred")) {
-                                        QJsonValue predValue = info.value("y_pred");
-                                        y_pred = predValue.toInt();
-                                        if(y_pred == 1)
-                                            logOut << "missing\n";
-                                        else if(y_pred == 0){
-                                            logOut << "done\n";
-                                        }
-                                    }
-                                    if(y_pred==1){
-                                        NeuronSWC s;
-                                        s.x=x;
-                                        s.y=y;
-                                        s.z=z;
-                                        s.type=10;
-                                        markPoints.push_back(s);
-                                    }
+                        if (value.isObject()) {  // Version 的 value 是数组
+                            QJsonObject resData = value.toObject();
+                            if (resData.contains("relPath")){
+                                relPath = resData.value("relPath").toString();
+                            }
+                            if (resData.contains("coorPredictedResultList")){
+                                QJsonArray coorPredictedResList = resData.value("coorPredictedResultList").toArray();
+                                for (int i = 0; i < coorPredictedResList.size(); i++){
+                                    TipCoorPredictedResult coorResult;
+                                    QJsonObject coorResultObj = coorPredictedResList.at(i).toObject();
+                                    QJsonObject maxResCoorObj = coorResultObj.value("maxResCoor").toObject();
+                                    QString storeDirName = coorResultObj.value("storeDirName").toString();
+                                    int y_pred = coorResultObj.value("y_pred").toInt();
+                                    coorResult.maxResCoor = XYZ(maxResCoorObj.value("x").toDouble(), maxResCoorObj.value("y").toDouble(),
+                                                                maxResCoorObj.value("z").toDouble());
+                                    coorResult.storeDirName = storeDirName;
+                                    coorResult.y_pred = y_pred;
+                                    coorResults.push_back(coorResult);
+                                }
+                            }
+                            for (auto it = coorResults.begin(); it != coorResults.end(); it++){
+                                if (it->y_pred == 1){
+                                    NeuronSWC s;
+                                    s.x = it->maxResCoor.x;
+                                    s.y = it->maxResCoor.y;
+                                    s.z = it->maxResCoor.z;
+                                    s.type=10;
+                                    markPoints.push_back(s);
                                 }
                             }
                         }
@@ -1690,7 +1807,7 @@ void CollDetection::handleTip(vector<NeuronSWC>& tipPoints){
         for(int i=0;i<markPoints.size();i++){
             CellAPO marker;
             marker.name="";
-            marker.comment="quality_control";
+            marker.comment="Missing";
             marker.orderinfo="";
             marker.color.r=250;
             marker.color.g=100;
@@ -1783,62 +1900,89 @@ void CollDetection::handleCrossing(QJsonArray& infos){
             if (json_error.error == QJsonParseError::NoError) {
                 if (doucment.isObject()) {
                     const QJsonObject obj = doucment.object();
+                    qDebug() << obj;
                     QString objCode;
                     QString objMsg;
                     if (obj.contains("code")) {
                         QJsonValue value = obj.value("code");
                         if (value.isString()) {
                             objCode= value.toString();
-                            logOut << "code : " << objCode <<"\n";
+                            qDebug() << "code : " << objCode;
                         }
                     }
                     if (obj.contains("msg")) {
                         QJsonValue value = obj.value("msg");
                         if (value.isString()) {
                             QString objMsg = value.toString();
-                            logOut << "msg : " << objMsg <<"\n";
+                            qDebug() << "msg : " << objMsg;
                         }
                     }
                     if (obj.contains("data")&&objCode=="200") {
                         QJsonValue value = obj.value("data");
-                        if (value.isArray()) {  // Version 的 value 是数组
-                            QJsonArray array = value.toArray();
-                            int nSize = array.size();
+                        if (value.isObject()) {  // Version 的 value 是数组
+                            QJsonObject resData = value.toObject();
+                            QJsonArray fiberPredictedResultListJA = resData.value("fiberPredictedResultList").toArray();
+                            int nSize = fiberPredictedResultListJA.size();
                             for (int i = 0; i < nSize; ++i) {
-                                QJsonValue mapValue = array.at(i);
-                                if (mapValue.isObject()) {
-                                    QJsonObject info = mapValue.toObject();
-                                    float x,y,z;
+                                QJsonValue fiberPredictedResultVal = fiberPredictedResultListJA.at(i);
+                                if (fiberPredictedResultVal.isObject()) {
+                                    QJsonObject fiberPredictedResultJO = fiberPredictedResultVal.toObject();
+                                    pair<pair<QString, vector<XYZ>>, pair<QString, vector<XYZ>>> pairVal;
                                     int y_pred;
-                                    if (info.contains("coors")) {
-                                        QJsonValue listValue = info.value("coors");
-                                        if (listValue.isArray()) {
-                                            QJsonArray listArray = listValue.toArray();
-                                            QJsonValue xValue = listArray.at(0);
-                                            QJsonValue yValue = listArray.at(1);
-                                            QJsonValue zValue = listArray.at(2);
-                                            x=xValue.toDouble();
-                                            y=yValue.toDouble();
-                                            z=zValue.toDouble();
-                                            logOut << "x: " << x/2 << " y: " << y/2 <<" z: " << z/2 << " ";
-                                        }
-                                    }
-                                    if (info.contains("y_pred")) {
-                                        QJsonValue predValue = info.value("y_pred");
-                                        y_pred = predValue.toInt();
-                                        if(y_pred == 0)
-                                            logOut << "crossing error\n";
-                                        else if(y_pred == 1){
-                                            logOut << "crossing right\n";
-                                        }
+                                    float x, y, z;
+                                    QString centerCoorStrRep;
+                                    if (fiberPredictedResultJO.contains("fiberCoorInfoList")) {
+                                        QJsonValue fiberCoorInfoListJV = fiberPredictedResultJO.value("fiberCoorInfoList");
+                                        if (fiberCoorInfoListJV.isArray()) {
+                                            QJsonArray fiberCoorInfoListJA = fiberCoorInfoListJV.toArray();
+                                            vector<XYZ> fiberCoorList;
+                                            for (int j = 0; j < fiberCoorInfoListJA.size(); j++){
+                                                QJsonObject fiberCoorInfoJO = fiberCoorInfoListJA.at(j).toObject();
+                                                QJsonObject coorJO = fiberCoorInfoJO.value("coor").toObject();
+                                                QJsonArray fiberCoorListJA = fiberCoorInfoJO.value("fiberCoorList").toArray();
+                                                XYZ centerCoor = XYZ(coorJO.value("x").toDouble(),
+                                                                     coorJO.value("y").toDouble(),
+                                                                     coorJO.value("z").toDouble());
+                                                QString centerCoorStr = QString::number(centerCoor.x) + "_" + QString::number(centerCoor.y) + "_" + QString::number(centerCoor.z);
+                                                if (j == 0) {
+                                                    x = centerCoor.x;
+                                                    y = centerCoor.y;
+                                                    z = centerCoor.z;
+                                                    centerCoorStrRep = centerCoorStr;
+                                                }
 
+                                                for (int p = 0; p < fiberCoorListJA.size(); p++){
+                                                    QJsonObject fiberCoorJO = fiberCoorListJA.at(p).toObject();
+                                                    XYZ fiberCoor = XYZ(fiberCoorJO.value("x").toDouble(),
+                                                                        fiberCoorJO.value("y").toDouble(),
+                                                                        fiberCoorJO.value("z").toDouble());
+                                                    fiberCoorList.push_back(fiberCoor);
+                                                }
+                                                if (j == 0) {
+                                                    pairVal.first = make_pair(centerCoorStr, fiberCoorList);
+                                                }
+                                                if (j == 1) {
+                                                    pairVal.second = make_pair(centerCoorStr, fiberCoorList);
+                                                }
+                                            }
+                                        }
                                     }
-                                    if(y_pred==0){
+                                    if (fiberPredictedResultJO.contains("y_pred")) {
+                                        QJsonValue predValue = fiberPredictedResultJO.value("y_pred");
+                                        y_pred = predValue.toInt();
+                                    }
+                                    if (y_pred == 2) {
+//                                        crossingInfoMap[centerCoorStrRep].fiberCoorInfoPair = pairVal;
+//                                        if (y_pred != 2) {
+//                                            crossingInfoMap[centerCoorStrRep].isAbleCorrect = false;
+//                                        }
+                                    }
+                                    if (y_pred == 0) {
                                         NeuronSWC s;
-                                        s.x=x;
-                                        s.y=y;
-                                        s.z=z;
-                                        s.type=18;
+                                        s.x = x;
+                                        s.y = y;
+                                        s.z = z;
+                                        s.type = 18;
                                         markPoints.push_back(s);
                                     }
                                 }
@@ -1857,7 +2001,7 @@ void CollDetection::handleCrossing(QJsonArray& infos){
         for(int i=0;i<markPoints.size();i++){
             CellAPO marker;
             marker.name="";
-            marker.comment="quality_control";
+            marker.comment="Crossing error";
             marker.orderinfo="";
             marker.color.r=168;
             marker.color.g=128;
@@ -1888,7 +2032,7 @@ void CollDetection::handleOverlapSegs(set<string>& outputSpecialPoints){
         stringToXYZ(*it, s.x, s.y, s.z);
         CellAPO marker;
         marker.name="";
-        marker.comment="quality_control";
+        marker.comment="Overlapping branch";
         marker.orderinfo="";
         marker.color.r=0;
         marker.color.g=20;
@@ -1917,6 +2061,20 @@ void CollDetection::sortSWC(QString fileOpenName, QString fileSaveName, double t
         logOut<<"Error in writing swc to file"<<"\n";
     }
     logOut << "sortSWC end\n";
+}
+
+void CollDetection::generateSortedSwc(QString somaDefinedSwcPath){
+    setSomaPointRadius(somaDefinedSwcPath, segments, somaCoordinate);
+    int number = getSomaNumberFromSwcFile(somaDefinedSwcPath, 1.234);
+    QList<NeuronSWC> neuron, result;
+    V_NeuronSWC_list new_segments;
+    auto nt = readSWC_file(somaDefinedSwcPath);
+    neuron = nt.listNeuron;
+    new_segments = NeuronTree__2__V_NeuronSWC_list(nt);
+    vector<NeuronSWC> loopMarkers;
+
+    SortSWCSimplify(neuron, new_segments, result, number);
+    export_list2file(result, somaDefinedSwcPath, inFile);
 }
 
 bool CollDetection::sortSWCAndDetectLoop(QString fileOpenName, QString fileSaveName, V3DLONG rootid){
@@ -2024,6 +2182,123 @@ QStringList CollDetection::getSWCSpecNInfo(QString filePath, int val){
     }
     return result;
     logOut << "getSWCSpecNCount end\n";
+}
+
+void CollDetection::setSomaCondition(){
+    map<string, set<size_t>> wholeGrid2segIDmap;
+
+    map<string, bool> isEndPointMap;
+
+    set<string> allPoints;
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        vector<int> rowN2Index(seg.row.size()+1);
+
+        for(size_t j=0; j<seg.row.size(); ++j){
+            rowN2Index[seg.row[j].n]=j;
+        }
+
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            wholeGrid2segIDmap[gridKey].insert(size_t(i));
+            allPoints.insert(gridKey);
+
+            if(j == 0 || j == seg.row.size() - 1){
+                isEndPointMap[gridKey] = true;
+            }
+        }
+    }
+
+    //末端点和分叉点
+    vector<string> points;
+    vector<set<int>> linksIndex;
+    //    vector<vector<int>> linksIndexVec;
+    map<string,int> pointsIndexMap;
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            if(j==0 || j==seg.row.size()-1){
+                //在pointsIndexMap中找不到某个线的末端点
+                if(pointsIndexMap.find(gridKey) == pointsIndexMap.end()){
+                    points.push_back(gridKey);
+                    linksIndex.push_back(set<int>());
+                    //                    linksIndexVec.push_back(vector<int>());
+                    pointsIndexMap[gridKey] = points.size() - 1;
+                }
+            }else{
+                if(wholeGrid2segIDmap[gridKey].size()>1 &&
+                    isEndPointMap.find(gridKey) != isEndPointMap.end() &&
+                    pointsIndexMap.find(gridKey) == pointsIndexMap.end()){
+                    points.push_back(gridKey);
+                    linksIndex.push_back(set<int>());
+                    //                    linksIndexVec.push_back(vector<int>());
+                    pointsIndexMap[gridKey] = points.size() - 1;
+                }
+            }
+        }
+    }
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        vector<int> segIndexs;
+        set<int> segIndexsSet;
+        segIndexs.clear();
+        segIndexsSet.clear();
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            if(pointsIndexMap.find(gridKey) != pointsIndexMap.end()){
+                int index = pointsIndexMap[gridKey];
+                if(segIndexsSet.find(index) == segIndexsSet.end()){
+                    segIndexs.push_back(index);
+                    segIndexsSet.insert(index);
+                }
+            }
+        }
+        for(size_t j=0; j<segIndexs.size()-1; ++j){
+            linksIndex[segIndexs[j]].insert(segIndexs[j+1]);
+            //            linksIndexVec[segIndexs[j]].push_back(segIndexs[j+1]);
+            linksIndex[segIndexs[j+1]].insert(segIndexs[j]);
+            //            linksIndexVec[segIndexs[j+1]].push_back(segIndexs[j]);
+        }
+    }
+
+    int maxFurcationsNum = 0;
+    int maxFurcationIndex = -1;
+    for(size_t i=0; i<points.size(); ++i){
+        //        qDebug()<<i<<" link size: "<<linksIndex[i].size();
+        if(linksIndex[i].size() > 3){
+            if(maxFurcationsNum < linksIndex[i].size() - 1){
+                maxFurcationsNum = linksIndex[i].size() - 1;
+                maxFurcationIndex = i;
+            }
+            NeuronSWC s;
+            stringToXYZ(points[i],s.x,s.y,s.z);
+        }
+    }
+
+    if(!isSomaExists && maxFurcationsNum >= 4){
+        NeuronSWC s;
+        stringToXYZ(points[maxFurcationIndex],s.x,s.y,s.z);
+        isSomaExists = true;
+        somaCoordinate.x = s.x;
+        somaCoordinate.y = s.y;
+        somaCoordinate.z = s.z;
+    }
 }
 
 void CollDetection::getImageRES(){
@@ -2172,11 +2447,11 @@ void CollDetection::removeErrorSegs(V_NeuronSWC_list& segments){
         if(seg.row.size()==1){
             segments.seg[i].to_be_deleted = true;
             errorSegsNum++;
-            for (V3DLONG p=0;p<seg.row.size();p++)
-            {
-                V_NeuronSWC_unit v = seg.row.at(p);
-                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
-            }
+//            for (V3DLONG p=0;p<seg.row.size();p++)
+//            {
+//                V_NeuronSWC_unit v = seg.row.at(p);
+//                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
+//            }
             continue;
         }
         set<string> coors;
@@ -2192,11 +2467,11 @@ void CollDetection::removeErrorSegs(V_NeuronSWC_list& segments){
         if(coors.size() < seg.row.size())
         {
             segments.seg[i].to_be_deleted = true;
-            for (V3DLONG p=0;p<seg.row.size();p++)
-            {
-                V_NeuronSWC_unit v = seg.row.at(p);
-                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
-            }
+//            for (V3DLONG p=0;p<seg.row.size();p++)
+//            {
+//                V_NeuronSWC_unit v = seg.row.at(p);
+//                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
+//            }
             errorSegsNum++;
             continue;
         }
@@ -2221,58 +2496,59 @@ void CollDetection::tuneErrorSegs(V_NeuronSWC_list& segments){
         if(seg.row.size()==1){
             segments.seg[i].to_be_deleted = true;
             errorSegsNum++;
-            for (V3DLONG p=0;p<seg.row.size();p++)
-            {
-                V_NeuronSWC_unit v = seg.row.at(p);
-                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
-            }
+//            for (V3DLONG p=0;p<seg.row.size();p++)
+//            {
+//                V_NeuronSWC_unit v = seg.row.at(p);
+//                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
+//            }
             continue;
         }
-        set<string> coors;
-        for(size_t j=0; j<seg.row.size(); j++){
-            float xLabel = seg.row[j].x;
-            float yLabel = seg.row[j].y;
-            float zLabel = seg.row[j].z;
-            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
-            string gridKey = gridKeyQ.toStdString();
-            coors.insert(gridKey);
-        }
-
-        if(coors.size() < seg.row.size())
-        {
-            for (V3DLONG p=0;p<seg.row.size();p++)
-            {
-                V_NeuronSWC_unit v = seg.row.at(p);
-                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
-            }
-            errorSegsNum++;
-            for (auto it = seg.row.begin(); it!=seg.row.end() - 1 && it!=seg.row.end();)
-            {
-                V_NeuronSWC_unit v1 = *it;
-                V_NeuronSWC_unit v2 = *(it+1);
-                if(!(fabs(v1.x - v2.x) < 1e-5) || !(fabs(v1.y - v2.y) < 1e-5) || !(fabs(v1.z - v2.z) < 1e-5)){
-                    it++;
-                }
-                else{
-                    it = seg.row.erase(it);
-                }
-            }
-
-            if(seg.row.size()==1){
-                segments.seg[i].to_be_deleted = true;
-                continue;
-            }
-
-            int count = 1;
-            for (V3DLONG p=0;p<seg.row.size();p++)
-            {
-                V_NeuronSWC_unit& v = seg.row.at(p);
-                v.n = count++;
-                v.parent = count;
-            }
-            seg.row[seg.row.size() - 1].parent = -1;
-        }
     }
+//        set<string> coors;
+//        for(size_t j=0; j<seg.row.size(); j++){
+//            float xLabel = seg.row[j].x;
+//            float yLabel = seg.row[j].y;
+//            float zLabel = seg.row[j].z;
+//            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+//            string gridKey = gridKeyQ.toStdString();
+//            coors.insert(gridKey);
+//        }
+
+//        if(coors.size() < seg.row.size())
+//        {
+//            for (V3DLONG p=0;p<seg.row.size();p++)
+//            {
+//                V_NeuronSWC_unit v = seg.row.at(p);
+//                logOut <<"row ["<< p <<"] : "<<v.data[0]<<" "<<v.data[1]<<" "<<v.data[2]<<" "<<v.data[3]<<" "<<v.data[4]<<" "<<v.data[5]<<" "<<v.data[6] << "\n";
+//            }
+//            errorSegsNum++;
+//            for (auto it = seg.row.begin(); it!=seg.row.end() - 1 && it!=seg.row.end();)
+//            {
+//                V_NeuronSWC_unit v1 = *it;
+//                V_NeuronSWC_unit v2 = *(it+1);
+//                if(!(fabs(v1.x - v2.x) < 1e-5) || !(fabs(v1.y - v2.y) < 1e-5) || !(fabs(v1.z - v2.z) < 1e-5)){
+//                    it++;
+//                }
+//                else{
+//                    it = seg.row.erase(it);
+//                }
+//            }
+
+//            if(seg.row.size()==1){
+//                segments.seg[i].to_be_deleted = true;
+//                continue;
+//            }
+
+//            int count = 1;
+//            for (V3DLONG p=0;p<seg.row.size();p++)
+//            {
+//                V_NeuronSWC_unit& v = seg.row.at(p);
+//                v.n = count++;
+//                v.parent = count;
+//            }
+//            seg.row[seg.row.size() - 1].parent = -1;
+//        }
+//    }
 
     auto iter = segments.seg.begin();
     while (iter != segments.seg.end())
@@ -2283,6 +2559,248 @@ void CollDetection::tuneErrorSegs(V_NeuronSWC_list& segments){
             ++iter;
 
     logOut << "tuneErrorSegs end\n";
+}
+
+void CollDetection::removeShortSegs(V_NeuronSWC_list& segments, double dist_thres){
+    logOut << "begin removeShortSegs...\n";
+
+    map<string, set<size_t>> wholeGrid2segIDmap;
+
+    map<string, bool> isEndPointMap;
+
+    set<string> allPoints;
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        vector<int> rowN2Index(seg.row.size()+1);
+
+        for(size_t j=0; j<seg.row.size(); ++j){
+            rowN2Index[seg.row[j].n]=j;
+        }
+
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            wholeGrid2segIDmap[gridKey].insert(size_t(i));
+            allPoints.insert(gridKey);
+
+            if(j == 0 || j == seg.row.size() - 1){
+                isEndPointMap[gridKey] = true;
+            }
+        }
+    }
+
+    //末端点和分叉点
+    vector<string> points;
+    vector<set<int>> linksIndex;
+    //    vector<vector<int>> linksIndexVec;
+    map<string,int> pointsIndexMap;
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            if(j==0 || j==seg.row.size()-1){
+                //在pointsIndexMap中找不到某个线的末端点
+                if(pointsIndexMap.find(gridKey) == pointsIndexMap.end()){
+                    points.push_back(gridKey);
+                    linksIndex.push_back(set<int>());
+                    //                    linksIndexVec.push_back(vector<int>());
+                    pointsIndexMap[gridKey] = points.size() - 1;
+                }
+            }else{
+                if(wholeGrid2segIDmap[gridKey].size()>1 &&
+                    isEndPointMap.find(gridKey) != isEndPointMap.end() &&
+                    pointsIndexMap.find(gridKey) == pointsIndexMap.end()){
+                    points.push_back(gridKey);
+                    linksIndex.push_back(set<int>());
+                    //                    linksIndexVec.push_back(vector<int>());
+                    pointsIndexMap[gridKey] = points.size() - 1;
+                }
+            }
+        }
+    }
+
+    for(size_t i=0; i<segments.seg.size(); ++i){
+        V_NeuronSWC seg = segments.seg[i];
+        vector<int> segIndexs;
+        set<int> segIndexsSet;
+        segIndexs.clear();
+        segIndexsSet.clear();
+        for(size_t j=0; j<seg.row.size(); ++j){
+            float xLabel = seg.row[j].x;
+            float yLabel = seg.row[j].y;
+            float zLabel = seg.row[j].z;
+            QString gridKeyQ = QString::number(xLabel) + "_" + QString::number(yLabel) + "_" + QString::number(zLabel);
+            string gridKey = gridKeyQ.toStdString();
+            if(pointsIndexMap.find(gridKey) != pointsIndexMap.end()){
+                int index = pointsIndexMap[gridKey];
+                if(segIndexsSet.find(index) == segIndexsSet.end()){
+                    segIndexs.push_back(index);
+                    segIndexsSet.insert(index);
+                }
+            }
+        }
+        for(size_t j=0; j<segIndexs.size()-1; ++j){
+            linksIndex[segIndexs[j]].insert(segIndexs[j+1]);
+            //            linksIndexVec[segIndexs[j]].push_back(segIndexs[j+1]);
+            linksIndex[segIndexs[j+1]].insert(segIndexs[j]);
+            //            linksIndexVec[segIndexs[j+1]].push_back(segIndexs[j]);
+        }
+    }
+
+//    int maxFurcationsNum = 0;
+//    int maxFurcationIndex = -1;
+//    for(size_t i=0; i<points.size(); ++i){
+//        //        qDebug()<<i<<" link size: "<<linksIndex[i].size();
+//        if(linksIndex[i].size() > 3){
+//            if(maxFurcationsNum < linksIndex[i].size()){
+//                maxFurcationsNum = linksIndex[i].size();
+//                maxFurcationIndex = i;
+//            }
+//            NeuronSWC s;
+//            stringToXYZ(points[i],s.x,s.y,s.z);
+//        }
+//    }
+
+//    if(!isSomaExists && maxFurcationsNum >= 6){
+//        NeuronSWC s;
+//        stringToXYZ(points[maxFurcationIndex],s.x,s.y,s.z);
+//        isSomaExists = true;
+//        somaCoordinate.x = s.x;
+//        somaCoordinate.y = s.y;
+//        somaCoordinate.z = s.z;
+//    }
+
+    bool isDecided[segments.seg.size()];
+    for(int i = 0; i < segments.seg.size(); i++){
+        isDecided[i] = false;
+    }
+    for(size_t i=0; i<points.size(); ++i){
+        if(linksIndex[i].size() >= 3){
+            NeuronSWC s;
+            stringToXYZ(points[i],s.x,s.y,s.z);
+            if(isSomaExists && distance(s.x, somaCoordinate.x, s.y,somaCoordinate.y,
+                         s.z, somaCoordinate.z) < 8)
+                continue;
+
+            auto segIdSet = wholeGrid2segIDmap[points[i]];
+            for(auto segIt = segIdSet.begin(); segIt != segIdSet.end(); segIt++){
+                if(isDecided[*segIt]){
+                    continue;
+                }
+                V_NeuronSWC& seg = segments.seg[*segIt];
+                float xLabel1 = seg.row[0].x;
+                float yLabel1 = seg.row[0].y;
+                float zLabel1 = seg.row[0].z;
+                float xLabel2= seg.row[seg.row.size()-1].x;
+                float yLabel2= seg.row[seg.row.size()-1].y;
+                float zLabel2= seg.row[seg.row.size()-1].z;
+                QString gridKeyQ1 = QString::number(xLabel1) + "_" + QString::number(yLabel1) + "_" + QString::number(zLabel1);
+                string gridKey1 = gridKeyQ1.toStdString();
+                QString gridKeyQ2 = QString::number(xLabel2) + "_" + QString::number(yLabel2) + "_" + QString::number(zLabel2);
+                string gridKey2 = gridKeyQ2.toStdString();
+                int size1 = wholeGrid2segIDmap[gridKey1].size();
+                int size2 = wholeGrid2segIDmap[gridKey2].size();
+
+                if(seg.row.size() <= 3 && getSegLength(seg) <= dist_thres){
+                    if(gridKey1 == points[i] || gridKey2 == points[i]){
+                        if((gridKeyQ1 == gridKeyQ2) || size1 <= 1 || size2 <= 1){
+                            seg.to_be_deleted = true;
+                            isDecided[*segIt] = true;
+                            continue;
+                        }
+                    }
+                }
+
+                if(gridKey1 != points[i] && gridKey2 != points[i]){
+                    int minSize;
+                    int tipIndex;
+                    if((size1 <= 1 && size2 <= 1) || (size1 > 1 && size2 > 1)){
+                        continue;
+                    }
+                    if(size1 <= 1 && size2 > 1){
+                        minSize = size1;
+                        tipIndex = 0;
+                    }
+                    else if(size1 > 1 && size2 <= 1){
+                        minSize = size2;
+                        tipIndex = seg.row.size() - 1;
+                    }
+
+                    int index = getPointInSegIndex(points[i], seg);
+                    if(tipIndex == 0 && index <= tipIndex + 2 && index > tipIndex){
+                        double len = getPartOfSegLength(seg, tipIndex, index);
+                        if(len <= dist_thres){
+//                            for(int j = 0; j < seg.row.size(); j++){
+//                                seg.row[j].type = 7;
+//                            }
+                            seg.row.erase(seg.row.begin(), seg.row.begin() + index - tipIndex);
+                            int count = 1;
+                            for (V3DLONG p=0;p<seg.row.size();p++)
+                            {
+                                V_NeuronSWC_unit& v = seg.row.at(p);
+                                v.n = count++;
+                                v.parent = count;
+                            }
+                            seg.row[seg.row.size() - 1].parent = -1;
+
+                            isDecided[*segIt] = true;
+                            continue;
+                        }
+                    }
+                    if(tipIndex == seg.row.size() - 1 && index >= tipIndex - 2 && index < tipIndex){
+                        double len = getPartOfSegLength(seg, index, tipIndex);
+                        if(len <= dist_thres){
+//                            for(int j = 0; j < seg.row.size(); j++){
+//                                seg.row[j].type = 7;
+//                            }
+                            seg.row.erase(seg.row.begin() + index + 1, seg.row.end());
+                            int count = 1;
+                            for (V3DLONG p=0;p<seg.row.size();p++)
+                            {
+                                V_NeuronSWC_unit& v = seg.row.at(p);
+                                v.n = count++;
+                                v.parent = count;
+                            }
+                            seg.row[seg.row.size() - 1].parent = -1;
+
+                            isDecided[*segIt] = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for(int i = 0; i < segments.seg.size(); i++){
+        if(isDecided[i]){
+            removedShortSegNum++;
+        }
+    }
+
+    auto iter = segments.seg.begin();
+    while (iter != segments.seg.end())
+        if (iter->to_be_deleted){;
+            iter = segments.seg.erase(iter);
+//            for(int i = 0; i < iter->row.size(); i++){
+//                iter->row[i].type = 7;
+//            }
+//            iter->to_be_deleted = false;
+//            ++iter;
+        }
+        else
+            ++iter;
+
+    logOut << "removeShortSegs end\n";
 }
 
 void CollDetection::detectOverlapSegs(V_NeuronSWC_list inputSegList, double dist_thres){

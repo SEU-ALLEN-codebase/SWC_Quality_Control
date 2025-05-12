@@ -79,7 +79,7 @@ double computeDist2(const NeuronSWC & s1, const NeuronSWC & s2);
 
 bool SortSWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG newrootid, double thres);
 
-bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QList<NeuronSWC> & result, V3DLONG newrootid, QString& msg, vector<NeuronSWC>& loopMarkers);
+bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QList<NeuronSWC> & result, V3DLONG newrootid);
 
 bool SortSWCAndDetectLoop(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QList<NeuronSWC> & result, vector<CellAPO>& loopMarkers, V3DLONG newrootid);
 

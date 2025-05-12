@@ -265,9 +265,9 @@ double getSegLength(V_NeuronSWC &seg){
     return sum;
 }
 
-double getPartOfSegLength(V_NeuronSWC &seg, int index){
+double getPartOfSegLength(V_NeuronSWC &seg, int index1, int index2){
     double sum=0;
-    for(int i=0; i<index; i++){
+    for(int i=index1; i<index2; i++){
         sum+=distance(seg.row[i].x,seg.row[i+1].x,seg.row[i].y,seg.row[i+1].y,seg.row[i].z,seg.row[i+1].z);
     }
     return sum;
@@ -471,13 +471,13 @@ int isOverlapOfTwoSegs(QTextStream& logOut, V_NeuronSWC& seg1, V_NeuronSWC& seg2
     double minDensity = min(length1/seg1.row.size(), length2/seg2.row.size());
     double minLength = min(length1, length2);
     //    double mindist = 3.5 - 3.5 * 1.0 / minLength;
-    double mindist = 0.3 + 4 * sqrt(minLength)/(sqrt(minLength) + 9);
+    double mindist = 0.1 + 5 * sqrt(minLength)/(sqrt(minLength) + 11);
     //    double mindist_thres = 3.5 - 3.5 * 1.0 / minLength;
-    double mindist_thres = 0.3 + 4 * sqrt(minLength)/(sqrt(minLength) + 9);
+    double mindist_thres = 0.1 + 5 * sqrt(minLength)/(sqrt(minLength) + 11);
 
     if(minDensity < 5){
-        mindist = 0.1 + 1.4 * sqrt(minLength)/(sqrt(minLength) + 9);
-        mindist_thres = 0.1 + 1.4 * sqrt(minLength)/(sqrt(minLength) + 9);
+        mindist = 0.03 + 1.8 * sqrt(minLength)/(sqrt(minLength) + 11);
+        mindist_thres = 0.03 + 1.8 * sqrt(minLength)/(sqrt(minLength) + 11);
     }
 
     if(seg1.row.size() == seg2.row.size()){
@@ -494,10 +494,12 @@ int isOverlapOfTwoSegs(QTextStream& logOut, V_NeuronSWC& seg1, V_NeuronSWC& seg2
             );
         }
 
-//        qDebug()<<"1: "<<dist/cnt;
-        if(dist/cnt<mindist)
+        if(dist/cnt<mindist){
+            qDebug()<<"1: "<<dist/cnt;
+            seg1.printInfo(logOut);
+            seg2.printInfo(logOut);
             return 1;
-
+        }
         dist=0;
         for(std::vector<V_NeuronSWC_unit>::size_type i=0;i<cnt;i++)
         {
@@ -509,10 +511,12 @@ int isOverlapOfTwoSegs(QTextStream& logOut, V_NeuronSWC& seg1, V_NeuronSWC& seg2
             );
         }
 
-//        qDebug()<<"2: "<<dist/cnt;
-        if(dist/cnt<mindist)
+        if(dist/cnt<mindist){
+            logOut <<"2: "<<dist/cnt;
+            seg1.printInfo(logOut);
+            seg2.printInfo(logOut);
             return 1;
-
+        }
         return 0;
     }
 
@@ -591,6 +595,8 @@ int isOverlapOfTwoSegs(QTextStream& logOut, V_NeuronSWC& seg1, V_NeuronSWC& seg2
 
         if(dist/cnt<mindist_thres){
             logOut <<"1:  "<<dist/cnt << "\n";
+//            seg1.printInfo(logOut);
+//            seg2.printInfo(logOut);
             if(!isReverse){
                 if(length_short <= length_long)
                     return 1;
@@ -624,6 +630,8 @@ int isOverlapOfTwoSegs(QTextStream& logOut, V_NeuronSWC& seg1, V_NeuronSWC& seg2
         }
 
         if(dist/cnt<mindist_thres){
+//            seg1.printInfo(logOut);
+//            seg2.printInfo(logOut);
             logOut <<"2:  "<<dist/cnt << "\n";
             if(!isReverse){
                 if(length_short <= length_long)
@@ -807,6 +815,82 @@ void mergeResultCSVFilesAll(const QStringList& allPaths, const string& outputPat
 
     outputFile.close();
     cout << "Csv files merged successfully!" << endl;
+}
+
+void mergeErrorResultCSVFilesAll(const QStringList& allPaths, const string& outputPath){
+    ofstream outputFile(outputPath);
+    if(!outputFile){
+        cerr << "Failed to open output File: " << outputPath << endl;
+        return;
+    }
+    bool isFirst = true;
+    for(auto path:allPaths){
+        ifstream inputFile(path.toStdString());
+        if(!inputFile){
+            cerr << "Failed to open input file: " << path.toStdString();
+            continue;
+        }
+
+        string header;
+        if(getline(inputFile, header)){
+            if(isFirst){
+                outputFile << header << endl;
+                isFirst = false;
+            }
+        }
+
+        string line;
+        while(getline(inputFile, line)){
+            vector<string> tokens = splitCSVLine(line);
+            string somaDetectedCondition = tokens[1];
+            int allNum = stoi(tokens[14]);
+            if(somaDetectedCondition == "已检测出胞体位置"){
+                if(allNum != 0){
+                    outputFile << line << endl;
+                }
+            }
+            else if(somaDetectedCondition == "自动设置多分叉为胞体位置"){
+                if(allNum != 0){
+                    outputFile << line << endl;
+                }
+            }
+            else{
+                outputFile << line << endl;
+            }
+        }
+
+        inputFile.close();
+    }
+
+    outputFile.close();
+    cout << "Csv files merged successfully!" << endl;
+}
+
+std::vector<std::string> splitCSVLine(const std::string& line) {
+    std::vector<std::string> fields;
+    std::string field;
+    bool insideQuotes = false;
+
+    for (char c : line) {
+        if (c == '\"') {
+            insideQuotes = !insideQuotes; // Toggle the insideQuotes flag
+        } else if (c == ',' && !insideQuotes) {
+            fields.push_back(field);
+            field.clear();
+        } else {
+            field += c;
+        }
+    }
+    fields.push_back(field); // Add the last field
+
+    // Optionally, you can trim quotes from fields
+    for (auto& f : fields) {
+        if (!f.empty() && f.front() == '\"' && f.back() == '\"') {
+            f = f.substr(1, f.size() - 2);
+        }
+    }
+
+    return fields;
 }
 
 QStringList getAllTargetPaths(QString rootPath, QStringList filters){

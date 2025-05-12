@@ -16,6 +16,7 @@ public:
     QString d_anoPath;
     QString d_resultPath;
     QString d_swcOutputPath;
+    QString d_somaDefinedSwcPath;
     QString d_tmpswcPath;
     QString d_croppedApoMulfurPath;
     QString d_croppedApoBifurPath;
@@ -24,6 +25,7 @@ public:
     QString d_croppedApoCrossingPath;
     QString d_croppedApoOverlapPath;
     QString d_croppedApoDissoPath;
+    QString d_croppedApoAnglePath;
     QString d_croppedSwcMulfurPath;
     QString d_croppedSwcBifurPath;
     QString d_croppedSwcLoopPath;
@@ -31,14 +33,15 @@ public:
     QString d_croppedSwcCrossingPath;
     QString d_croppedSwcOverlapPath;
     QString d_croppedSwcDissoPath;
+    QString d_croppedSwcAnglePath;
 
 public:
     DetectTask();
-    DetectTask(QString infilePath, QString fileName, QString logPath, QString apoPath, QString anoPath, QString swcOutputPath, QString tmpSwcPath, QString resultPath,
+    DetectTask(QString infilePath, QString fileName, QString logPath, QString apoPath, QString anoPath, QString swcOutputPath, QString somaDefinedSwcPath, QString tmpSwcPath, QString resultPath,
                QString croppedApoMulfurPath, QString croppedApoBifurPath, QString croppedApoLoopPath, QString croppedMissingPath,
-               QString croppedApoCrossingPath, QString croppedApoOverlapPath, QString croppedApoDissoPath, QString croppedSwcMulfurPath,
+               QString croppedApoCrossingPath, QString croppedApoOverlapPath, QString croppedApoDissoPath, QString croppedApoAnglePath, QString croppedSwcMulfurPath,
                QString croppedSwcBifurPath, QString croppedSwcLoopPath, QString croppedSwcMissingPath,
-               QString croppedSwcCrossingPath, QString croppedSwcOverlapPath, QString croppedSwcDissoPath);
+               QString croppedSwcCrossingPath, QString croppedSwcOverlapPath, QString croppedSwcDissoPath, QString croppedSwcAnglePath);
     QString getImageName(QString fileName);
     void run() override;
 };

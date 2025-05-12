@@ -163,6 +163,7 @@ struct V_NeuronSWC
 	V_BranchUnit branchingProfile;
 
 	void printInfo();
+    void printInfo(QTextStream& logOut);
 
 	V3DLONG nrows() {return row.size();}
 

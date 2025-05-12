@@ -20,13 +20,13 @@ set<string> getAngleErrPoints(QTextStream& logOut, float dist_thre, XYZ somaCoor
 //计算两个向量的夹角
 float calculateAngleofVecs(QVector3D vector1, QVector3D vector2);
 //将soma点的半径设置为1.234
-bool setSomaPointRadius(QString fileSaveName, V_NeuronSWC_list segments, XYZ somaCoordinate, double dist_thre, CollDetection* detectUtil, QString& msg);
+void setSomaPointRadius(QString fileSaveName, V_NeuronSWC_list segments, XYZ somaCoordinate);
 //从swc文件中获取soma点的序号
-int getSomaNumberFromSwcFile(QString filePath, float r, QString& msg);
+int getSomaNumberFromSwcFile(QString filePath, float r);
 
 //analyze
 void analyzeSomaNearBy(QTextStream& logOut, XYZ somaCoordinate, V_NeuronSWC_list segments, float dist_thre);//分析soma处是否连接至一点,需要知道soma位置
-vector<CellAPO> analyzeColorMutation(QTextStream& logOut, XYZ somaCoordinate, V_NeuronSWC_list segments, float dist_thre);//分析是否存在颜色突变,需要知道soma位置
+vector<CellAPO> analyzeColorMutation(QTextStream& logOut, bool isSomaExists, XYZ somaCoordinate, V_NeuronSWC_list segments, float dist_thre);//分析是否存在颜色突变,需要知道soma位置
 vector<CellAPO> analyzeColorMutationForHB(QTextStream& logOut, bool isSomaExists, XYZ somaCoordinate, V_NeuronSWC_list segments, float dist_thre);//分析人脑神经元是否存在颜色突变,需要知道soma位置
 vector<CellAPO> analyzeDissociativeSegs(QTextStream& logOut, V_NeuronSWC_list segments, XYZ somaCoordinate);//分析是否存在游离的线段
 vector<CellAPO> analyzeAngles(QTextStream& logOut, XYZ somaCoordinate, V_NeuronSWC_list& segments, float dist_thre, bool isSomaExists);//分析树突分叉的角度是否合理,最好知道soma位置

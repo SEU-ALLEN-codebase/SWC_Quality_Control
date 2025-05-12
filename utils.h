@@ -46,6 +46,7 @@ double distance(const CellAPO &m1,const CellAPO &m2);
 double distance(const double x1, const double x2, const double y1, const double y2, const double z1, const double z2);
 double getSegLength(V_NeuronSWC &seg);
 double getPartOfSegLength(V_NeuronSWC &seg, int index);
+double getPartOfSegLength(V_NeuronSWC &seg, int index1, int index2);
 int findnearest(const CellAPO &m,const QList<CellAPO> &markers);
 
 void init();
@@ -65,7 +66,9 @@ void mergeresultFiles(const string& folderPath);
 
 void mergeResultCSVFiles(const string& folderPath, const string& outputPath);
 void mergeResultCSVFilesAll(const QStringList& allPaths, const string& outputPath);
+void mergeErrorResultCSVFilesAll(const QStringList& allPaths, const string& outputPath);
 
+std::vector<std::string> splitCSVLine(const std::string& line);
 QStringList getAllTargetPaths(QString rootPath, QStringList filters);
 
 #endif // UTILS_H

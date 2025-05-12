@@ -2,11 +2,11 @@
 
 DetectTask::DetectTask(){}
 
-DetectTask::DetectTask(QString infilePath, QString fileName, QString logPath, QString apoPath, QString anoPath, QString swcOutputPath, QString tmpSwcPath, QString resultPath,
+DetectTask::DetectTask(QString infilePath, QString fileName, QString logPath, QString apoPath, QString anoPath, QString swcOutputPath, QString somaDefinedSwcPath, QString tmpSwcPath, QString resultPath,
                        QString croppedApoMulfurPath, QString croppedApoBifurPath, QString croppedApoLoopPath, QString croppedApoMissingPath,
-                       QString croppedApoCrossingPath, QString croppedApoOverlapPath, QString croppedApoDissoPath, QString croppedSwcMulfurPath,
+                       QString croppedApoCrossingPath, QString croppedApoOverlapPath, QString croppedApoDissoPath, QString croppedApoAnglePath, QString croppedSwcMulfurPath,
                        QString croppedSwcBifurPath, QString croppedSwcLoopPath, QString croppedSwcMissingPath,
-                       QString croppedSwcCrossingPath, QString croppedSwcOverlapPath, QString croppedSwcDissoPath)
+                       QString croppedSwcCrossingPath, QString croppedSwcOverlapPath, QString croppedSwcDissoPath, QString croppedSwcAnglePath)
 {
     d_inFile=infilePath;
     d_fileName=fileName;
@@ -15,6 +15,7 @@ DetectTask::DetectTask(QString infilePath, QString fileName, QString logPath, QS
     d_anoPath=anoPath;
     d_resultPath=resultPath;
     d_swcOutputPath = swcOutputPath;
+    d_somaDefinedSwcPath = somaDefinedSwcPath;
     d_tmpswcPath = tmpSwcPath;
     d_croppedApoMulfurPath = croppedApoMulfurPath;
     d_croppedApoBifurPath = croppedApoBifurPath;
@@ -23,6 +24,7 @@ DetectTask::DetectTask(QString infilePath, QString fileName, QString logPath, QS
     d_croppedApoCrossingPath = croppedApoCrossingPath;
     d_croppedApoOverlapPath = croppedApoOverlapPath;
     d_croppedApoDissoPath = croppedApoDissoPath;
+    d_croppedApoAnglePath = croppedApoAnglePath;
     d_croppedSwcMulfurPath = croppedSwcMulfurPath;
     d_croppedSwcBifurPath = croppedSwcBifurPath;
     d_croppedSwcLoopPath = croppedSwcLoopPath;
@@ -30,6 +32,7 @@ DetectTask::DetectTask(QString infilePath, QString fileName, QString logPath, QS
     d_croppedSwcCrossingPath = croppedSwcCrossingPath;
     d_croppedSwcOverlapPath = croppedSwcOverlapPath;
     d_croppedSwcDissoPath = croppedSwcDissoPath;
+    d_croppedSwcAnglePath = croppedSwcAnglePath;
 }
 
 QString DetectTask::getImageName(QString fileName){
@@ -51,7 +54,7 @@ void DetectTask::run()
 {
     // 在这里编写需要在后台线程中执行的代码
     qDebug() << "Task executed in thread: " << QThread::currentThread();
-    CollDetection collDetection(d_inFile, d_fileName, d_logPath, d_apoPath, d_anoPath, d_swcOutputPath, d_tmpswcPath, d_resultPath,
+    CollDetection collDetection(d_inFile, d_fileName, d_logPath, d_apoPath, d_anoPath, d_swcOutputPath, d_somaDefinedSwcPath, d_tmpswcPath, d_resultPath,
                                 d_croppedApoMulfurPath,
                                 d_croppedApoBifurPath,
                                 d_croppedApoLoopPath,
@@ -59,32 +62,35 @@ void DetectTask::run()
                                 d_croppedApoCrossingPath,
                                 d_croppedApoOverlapPath,
                                 d_croppedApoDissoPath,
+                                d_croppedApoAnglePath,
                                 d_croppedSwcMulfurPath,
                                 d_croppedSwcBifurPath,
                                 d_croppedSwcLoopPath,
                                 d_croppedSwcMissingPath,
                                 d_croppedSwcCrossingPath,
                                 d_croppedSwcOverlapPath,
-                                d_croppedSwcDissoPath);
-//    QStringList parts1 = d_fileName.split("_");
-//    QStringList parts2 = d_fileName.split(".");
-//    if(d_fileName.startsWith("brainID")){
-//        collDetection.image=parts1[1];
-//    }
-//    else{
-//        collDetection.image=parts2[0];
-//    }
+                                d_croppedSwcDissoPath,
+                                d_croppedSwcAnglePath);
+    QStringList parts1 = d_fileName.split("_");
+    QStringList parts2 = d_fileName.split(".");
+    if(d_fileName.startsWith("brainID")){
+        collDetection.image=parts1[1];
+    }
+    else{
+        collDetection.image=parts2[0];
+    }
 
 //    collDetection.image = getImageName(d_fileName);
 //    colldetection->image=parts[1];
 
-    QStringList parts = d_fileName.split("_");
-    if(parts[1].size() == 1){
-        collDetection.image = parts[0] + "_" + parts[1];
-    }
-    else{
-        collDetection.image = parts[0];
-    }
+//    QStringList parts = d_fileName.split("_");
+//    if(parts[1].size() == 1){
+//        collDetection.image = parts[0] + "_" + parts[1];
+//    }
+//    else{
+//        collDetection.image = parts[0];
+//    }
+//    collDetection.image = parts[0] + "_synthetic";
     qDebug()<<collDetection.image;
 
     //路径、不带后缀的文件名

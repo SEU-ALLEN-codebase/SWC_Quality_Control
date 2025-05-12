@@ -32,17 +32,20 @@ QVector< QVector<V3DLONG> > get_neighbors(QList<NeuronSWC> &neurons, const QHash
     {
         // Find parent node
         //        qDebug()<<i;
-        int pid_old = nlist.lastIndexOf(neurons.at(i).pn);
+        int pid_old = neurons.at(i).pn;
         if(pid_old<0){
             continue;  // Skip root nodes
         }
         else{
-            int pname_old = neurons.at(pid_old).n;
+            int pname_old = pid_old;
             int cname_old = neurons.at(i).n;
             int pid_new = LUT.value(pname_old);
             int cid_new = LUT.value(cname_old);
             if((pid_new>=siz) || (cid_new>=siz)){
                 qDebug()<<QString("Out of range [0, %1]: pid:%2; cid:%3").arg(siz).arg(pid_new).arg(cid_new);
+            }
+            if(pid_new == cid_new){
+                continue;
             }
             // add a new neighbor for the child node
             if(!neighbors.at(cid_new).contains(pid_new)){
@@ -713,7 +716,7 @@ bool SortSWCAndDetectLoop(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments,
                 CellAPO marker;
                 marker.name="";
                 marker.orderinfo="";
-                marker.comment="quality_control";
+                marker.comment="Loop";
                 marker.color.r=255;
                 marker.color.g=255;
                 marker.color.b=255;
@@ -1006,13 +1009,12 @@ set<string> getTreeMarkerPoints(QList<NeuronSWC> & neurons, XYZ somaCoordinate){
     return resultSet;
 }
 
-bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QList<NeuronSWC> & result, V3DLONG newrootid, QString& msg, vector<NeuronSWC>& loopMarkers)
+bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QList<NeuronSWC> & result, V3DLONG newrootid)
 {
     // modified by Sujun
     // add empty file judgement
     if(neurons.size()==0){
-        msg = "empty swc file!";
-        return(false);
+        return false;
     }
     // node name list of
     QList<V3DLONG> nlist;
@@ -1067,8 +1069,7 @@ bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QLis
         if (LUT.keys().indexOf(newrootid)==-1)
         {
             qDebug()<<QString("The new root id you have chosen does not exist in the SWC file.");
-            msg = "the new root id you have chosen does not exist in the SWC file!";
-            return(false);
+            return false;
         }
     }
 
@@ -1102,44 +1103,6 @@ bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QLis
     //    qDebug()<<"sorted_size: "<<sorted_size;
     if(sorted_size < siz){
         qDebug()<<"swc is not a interconnected tree!";
-        msg = "swc is not a interconnected tree!";
-        return false;
-    }
-
-    vector<int> occurCounts(segments.seg.size());
-    for(int i=0; i<occurCounts.size(); i++)
-        occurCounts[i] = 0;
-
-    for(int i=0; i<specificPathNums.size(); i++){
-        if(neighbors[i].size() - specificPathNums[i] != 1){
-            float x = LUT_newid_to_node.value(i).x;
-            float y=LUT_newid_to_node.value(i).y;
-            float z=LUT_newid_to_node.value(i).z;
-            QString gridKeyQ = QString::number(x) + "_" + QString::number(y) + "_" + QString::number(z);
-            string gridKey = gridKeyQ.toStdString();
-            auto segIdSet = wholeGrid2SegIdMap[gridKey];
-            bool flag = true;
-            for(auto it=segIdSet.begin(); it!=segIdSet.end(); it++){
-                occurCounts[*it]++;
-                if(occurCounts[*it] > 2)
-                    flag = false;
-            }
-
-            if(flag){
-                NeuronSWC marker;
-                marker.type = 0;
-                marker.x=LUT_newid_to_node.value(i).x;
-                marker.y=LUT_newid_to_node.value(i).y;
-                marker.z=LUT_newid_to_node.value(i).z;
-                qDebug()<< marker.x <<" "<<marker.y<<" "<<marker.z;
-                loopMarkers.push_back(marker);
-            }
-        }
-    }
-
-    if(loopMarkers.size()!=0){
-        qDebug()<<"loop exists!";
-        msg = "swc exists loop, notice the white markers!";
         return false;
     }
 
@@ -1168,88 +1131,6 @@ bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QLis
 
     QList<V3DLONG> output_newroot_list;
     output_newroot_list.append(root);
-    //    if((thres != 1000000000) && (thres>0)){  // If distance threshold > 0: make new connections
-    //    v3d_msg(QString::number(thres));
-    //    if(thres>=0){  // If distance threshold > 0: make new connections
-    //        qDebug()<<"find the point in non-group 1 that is nearest to group 1";
-    //        //find the point in non-group 1 that is nearest to group 1,
-    //        //include the nearest point as well as its neighbors into group 1, until all the nodes are connected
-    //        output_newroot_list.append(root);
-    //        while(cur_group>1)
-    //        {
-    //            qDebug()<<"Remaining components: "<<cur_group;
-    //            double min = VOID;
-    //            double dist2 = 0;
-    //            int mingroup = 1;
-
-    //            // Find the closest pair of nodes between group 1 and the rest.
-    //            V3DLONG m1,m2;
-    //            for (V3DLONG ii=0;ii<siz;ii++)
-    //            {
-    //                if (component_id[ii]==1)
-    //                {
-    //                    //                    qDebug()<<QString("Distance check: %1").arg(ii);
-    //                    for (V3DLONG jj=0;jj<siz;jj++)
-    //                        if (component_id[jj]!=1)
-    //                        {
-    //                            //                            dist2 = computeDist2(neurons.at(nlist.indexOf(LUT.key(ii))),
-    //                            //                                                 neurons.at(nlist.indexOf(LUT.key(jj))));
-    //                            dist2 = computeDist2(LUT_newid_to_node.value(ii),
-    //                                                 LUT_newid_to_node.value(jj));
-    //                            if (dist2<min)
-    //                            {
-    //                                min = dist2;
-    //                                mingroup = component_id[jj];
-    //                                m1 = ii;
-    //                                m2 = jj;
-    //                            }
-    //                        }
-    //                }
-    //            }
-    //            for (V3DLONG i=0;i<siz;i++)
-    //            {
-    //                if (component_id[i]==mingroup)
-    //                {
-    //                    component_id[i] = 1;
-    //                }
-    //            }
-    //            qDebug()<<QString("Min distance: %1").arg(min);
-    //            if (min<=thres)
-    //            {
-    //                //                qDebug()<<QString("New connection is made between %1 and %2").arg(m1).arg(m2);
-    //                //                qDebug()<<QString("Original node name: %1 and %2")
-    //                //                                .arg(LUT_newid_to_node.value(m1).n)
-    //                //                                .arg(LUT_newid_to_node.value(m2).n);
-    //                if(!neighbors.at(m1).contains(m2)){neighbors[m1].push_back(m2);}
-    //                if(!neighbors.at(m2).contains(m1)){neighbors[m2].push_back(m1);}
-    //            }
-    //            else{  // set component the node closest to group 1 is root
-    //                output_newroot_list.append(m2);
-    //            }
-    //            cur_group--;
-    //        }
-    //        qDebug()<<"Number of components after making connections"<<output_newroot_list.size();
-    //    }
-    //    else{
-    //        int tp_group = 0;
-    //        for(int i=0; i<siz; i++){
-    //            if(component_id.at(i) != tp_group){
-    //                output_newroot_list.append(neworder.at(i));
-    //                tp_group = component_id.at(i);
-    //            }
-    //        }
-    //    }
-
-    // DFS sort of the neuronlist after new connections
-    //    for (int i=0;i<siz;i++)
-    //    {
-    //        component_id[i] = 0;
-    //        neworder[i]= VOID;
-    //    }
-    //    component_id.clear();
-    //    neworder.clear();
-    //    sorted_size = 0;
-    //    cur_group = 1;
 
     V3DLONG offset=0;
     for(V3DLONG i=0; i<output_newroot_list.size(); i++)
@@ -1257,14 +1138,6 @@ bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QLis
         V3DLONG new_root = output_newroot_list.at(i);
         //        qDebug()<<QString("Output component %1, root id is %2").arg(i).arg(new_root);
         V3DLONG cnt = 0;
-        // Sort current component;
-        //        cur_neworder= DFS(neighbors, new_root, siz);
-        //        qDebug()<<QString("cur_neworder=%1").arg(cur_neworder.size());
-        //        sorted_size += cur_neworder.size();
-        //        neworder.append(cur_neworder);
-        //        for(int i=0; i<cur_neworder.size(); i++){
-        //            component_id.append(cur_group);
-        //        }
         NeuronSWC S;
         S = LUT_newid_to_node.value(new_root);
         S.n = offset+1;
@@ -1298,16 +1171,14 @@ bool SortSWCSimplify(QList<NeuronSWC> & neurons, V_NeuronSWC_list segments, QLis
         offset += cnt;
     }
 
-    if ((sorted_size)<siz) {
+    if (sorted_size<siz) {
         qDebug()<<QString("Error!\nsorted_size:%1\nsize:%2").arg(sorted_size).arg(siz);
-        msg = QString("sorted_size:%1\nsize:%2").arg(sorted_size).arg(siz);
         return false;
     }
 
     // free space.
     neighbors.clear();
-    msg = "success!";
-    return(true);
+    return true;
 };
 
 
